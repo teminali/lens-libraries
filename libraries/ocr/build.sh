@@ -48,9 +48,9 @@ uv pip install --python "$PY" --break-system-packages --no-cache --quiet "indra-
 "$PY" -I -c "from huggingface_hub import snapshot_download; snapshot_download('datalab-to/indra-ocr', revision='$REVISION', local_dir='$OUT/models')" >/dev/null
 rm -rf "$OUT/models/.cache"
 
-# 4. It answers for its version and reads a picture, from where it stands.
-if [ "$OS" = windows ]; then RUN="$OUT/bin/ocr.cmd"; else RUN="$OUT/bin/ocr"; rm -f "$OUT/bin/ocr.cmd"; fi
-[ "$("$RUN" --version)" = "$VERSION" ] || { echo "build.sh: the library does not report $VERSION" >&2; exit 1; }
+# 4. It answers for its version from where it stands (through its launcher where the shell can run it), and each system keeps only its own launcher.
+if [ "$OS" = windows ]; then rm -f "$OUT/bin/ocr"; GOT="$("$PY" -I "$OUT/lib/ocr.py" --version | tr -d '\r')"; else rm -f "$OUT/bin/ocr.cmd"; GOT="$("$OUT/bin/ocr" --version)"; fi
+[ "$GOT" = "$VERSION" ] || { echo "build.sh: the library reports '$GOT', not $VERSION" >&2; exit 1; }
 
 ARCHIVE="$ROOT/dist/ocr-$VERSION-$PLATFORM.tar.gz"
 tar -czf "$ARCHIVE" -C "$OUT" .

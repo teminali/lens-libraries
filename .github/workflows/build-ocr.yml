@@ -1,0 +1,28 @@
+# Builds the word reader on each system it is published for and attaches the archives to its release (ocr-v<version>). It does not sign anything:
+# the index is signed and published from the publishing computer (node tools/publish.js), where the key is.
+name: build-ocr
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Library version (the release ocr-v<version> must exist)
+        required: true
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: libraries/ocr/build.sh "${{ inputs.version }}"
+      - run: gh release upload "ocr-v${{ inputs.version }}" dist/ocr-*.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
