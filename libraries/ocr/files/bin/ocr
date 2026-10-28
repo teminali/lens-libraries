@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lens Code's word reader: runs lib/ocr.py on this library's own Python, isolated from any other Python on the computer.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$HERE/python/bin/python3" -I "$HERE/lib/ocr.py" "$@"

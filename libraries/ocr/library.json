@@ -1,0 +1,7 @@
+{
+  "name": "Word reader",
+  "summary": "Reads the words in a picture, for copying a screenshot into a page.",
+  "license": "Apache-2.0 (indra-ocr); AI Pubs Open RAIL-M, modified (its models)",
+  "check": { "run": "bin/ocr", "args": ["--version"] },
+  "upstream": { "package": "indra-ocr", "version": "1.1.2", "models": "datalab-to/indra-ocr", "modelRevision": "v1.1.0" }
+}
