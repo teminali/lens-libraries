@@ -1,0 +1,10 @@
+{
+  "why": "The open-licence (OFL) families web and app designs use most, from github.com/google/fonts. A family is added here and the library rebuilt; its files, licence and metadata come from that repository unchanged (converted to woff2).",
+  "families": [
+    "inter", "roboto", "opensans", "lato", "montserrat", "poppins", "sourcesans3", "nunito", "nunitosans", "worksans",
+    "ibmplexsans", "ibmplexserif", "ibmplexmono", "dmsans", "dmserifdisplay", "manrope", "notosans", "notoserif", "raleway", "rubik",
+    "outfit", "plusjakartasans", "figtree", "spacegrotesk", "publicsans", "onest", "instrumentsans", "geist", "geistmono", "sora",
+    "lexend", "urbanist", "mulish", "karla", "barlow", "firasans", "firacode", "ptsans", "merriweather", "playfairdisplay",
+    "lora", "sourceserif4", "crimsonpro", "librebaskerville", "ebgaramond", "robotoslab", "robotomono", "sourcecodepro", "jetbrainsmono", "spacemono"
+  ]
+}
