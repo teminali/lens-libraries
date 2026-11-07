@@ -5,6 +5,8 @@
  *
  *   node tools/publish.js                                  re-sign and re-publish the index from what is released
  *   node tools/publish.js <id> <version> <platform>=<archive> [...]   release a version of a library, then the index
+ *   --dry-run                                              print what the index would list; nothing is signed or uploaded
+ * A library.json with "retired" is left out of the index (its releases stay).
  *
  * A version of a library is a GitHub release tagged `<id>-v<version>` holding one archive per platform (`darwin-arm64`, `linux-x64`, ..., or `any`).
  * The index is the release tagged `index`, holding libraries.json and libraries.json.sig (base64 ed25519 over the exact bytes of libraries.json).
@@ -72,6 +74,8 @@ function publishIndex() {
   const tags = releases();
   const libraries = [];
   for (const lib of described()) {
+    // a retired library (no Lens Code job uses it) is left out of the index; its releases stay, and a computer that holds it can still remove it
+    if (lib.retired) continue;
     const versions = tags.map((t) => new RegExp(`^${lib.id}-v(\\d+\\.\\d+\\.\\d+)$`).exec(t)).filter(Boolean).map((m) => m[1]);
     if (!versions.length) continue;
     const latest = versions.reduce((a, b) => (newer(b, a) ? b : a));
@@ -80,6 +84,7 @@ function publishIndex() {
     libraries.push({ id: lib.id, name: lib.name, summary: lib.summary, version: latest, ...(lib.license ? { license: lib.license } : {}), assets, ...(lib.check ? { check: lib.check } : {}) });
   }
   const text = `${JSON.stringify({ version: 1, libraries }, null, 2)}\n`;
+  if (DRY) { console.log(`dry run, nothing signed or uploaded. index would list: ${libraries.map((l) => `${l.id} ${l.version}`).join('; ') || 'nothing'}`); return; }
   const sig = crypto.sign(null, Buffer.from(text), crypto.createPrivateKey(fs.readFileSync(KEY_FILE, 'utf8'))).toString('base64');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-index-'));
   fs.writeFileSync(path.join(dir, 'libraries.json'), text);
@@ -90,7 +95,8 @@ function publishIndex() {
   console.log(`index: ${libraries.map((l) => `${l.id} ${l.version} (${Object.keys(l.assets).join(', ')})`).join('; ') || 'no libraries yet'}`);
 }
 
-const [id, version, ...archives] = process.argv.slice(2);
+const DRY = process.argv.includes('--dry-run');
+const [id, version, ...archives] = process.argv.slice(2).filter((a) => a !== '--dry-run');
 if (id) {
   if (!/^\d+\.\d+\.\d+$/.test(version || '') || !archives.length) { console.error('usage: node tools/publish.js <id> <version> <platform>=<archive> [...]'); process.exit(2); }
   release(id, version, archives);
