@@ -8,6 +8,10 @@ updates off for one.
 |---|---|
 | `ocr` | Reads the words in a picture (used when you ask Lens to copy a screenshot). Self-contained: its own runtime and models. |
 | `fonts` | 49 open-licence (SIL OFL) type families from google/fonts as woff2, each with its licence. A family a page names is installed into that project, so it shows the real face offline. |
+| `llama` | Retired 2026-11-07 (fast mode removed from Lens Code). Ran the small models on this computer (llama.cpp's server). |
+| `reader` | Retired 2026-11-07. Read each line of words in a picture. LFM3-VL-2B. |
+| `decider` | Retired 2026-11-07. Answered yes/no and which-one questions. d1-2B. |
+| `writer` | Retired 2026-11-07. Wrote short texts and read what a request asks. Qwen3.5-4B. |
 
 ## How Lens Code trusts what it downloads
 
