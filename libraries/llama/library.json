@@ -1,6 +1,6 @@
 {
   "name": "Model runtime",
-  "summary": "Runs the small models of fast mode on this computer (llama.cpp's server).",
+  "summary": "Runs the voice model on this computer (llama.cpp's server): llama-server for lfm3-omni.",
   "license": "MIT (llama.cpp)",
   "upstream": {
     "package": "llama.cpp",
@@ -13,6 +13,5 @@
       "windows-x64": "llama-b11960-bin-win-cpu-x64.zip",
       "windows-arm64": "llama-b11960-bin-win-cpu-arm64.zip"
     }
-  },
-  "retired": "2026-11-07: fast mode was removed from Lens Code (owner's order); no job of the app uses this library."
+  }
 }

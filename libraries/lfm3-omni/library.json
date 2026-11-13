@@ -1,0 +1,34 @@
+{
+  "name": "Voice model",
+  "summary": "Hears, rewrites, answers and speaks for voice in Lens Code, on this computer. LFM3-Omni-2B (Liquid AI).",
+  "license": "LFM Open License 1.0 (Liquid AI): free for commercial use under USD 10M annual revenue",
+  "runtime": "b11960",
+  "needs": [
+    "llama"
+  ],
+  "upstream": {
+    "repo": "LiquidAI/LFM3-Omni-2B-GGUF",
+    "revision": "d508b88f08a5b4286f2d2805a6a8d69a0ff44c72",
+    "files": [
+      {
+        "name": "LFM3-Omni-2B-Q4_K_M.gguf",
+        "size": 1099630080,
+        "sha256": "9f8d30e9d4fd7a9349d586e077988229b3ca0a0e4ad730897563d1eccc9893e2"
+      },
+      {
+        "name": "mmproj-LFM3-Omni-2B-Q8_0.gguf",
+        "size": 506842528,
+        "sha256": "8a25f9d1931244429de404fccacfb7fb933970a36aa5688d2f5069f29c6b27b1"
+      },
+      {
+        "name": "LICENSE",
+        "size": 10574
+      }
+    ]
+  },
+  "serve": {
+    "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+    "mmproj": "mmproj-LFM3-Omni-2B-Q8_0.gguf",
+    "ctx": 16384
+  }
+}
