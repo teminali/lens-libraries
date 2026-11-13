@@ -19,6 +19,11 @@
 //     card, the rest of a button a box half covers); a long run (the horizon, a turbine behind a card) is not followed.
 //   words: PP-OCRv5 text detection (text_mask.mjs, engine/ppocr_det.onnx), at the picture's own resolution, on any kind of picture (clean screenshot, compressed
 //     export, text over a photo). The flat-shape test above is used only for the UI's larger surfaces.
+//   elements (ui_elements.mjs, a trained UI-element detector): an element an erased card held only in part (a gradient card standing out of a dark one) is erased
+//     whole. Its images (photos, avatars, logos, icons, drawings) not yet cropped or lifted are listed in the answer and drawn on a sheet (<out>.images.png), for
+//     the caller to judge which are photographs to crop.
+// NO PHOTO: a picture whose largest photographic piece is under a fifth of it (photo_area.mjs: an interface screen) gets no plate; the answer gives its flat colours
+//   and its images instead.
 // WHAT IT CANNOT FIND ON ITS OWN: a photographic thing placed on the background with no flat part (a cut-out person, a product shot): box it or pass its mask.
 // Thin and small holes are filled by MI-GAN in one pass at full resolution; each big group by LaMa in a square window of its surroundings (at least 512 px, scaled
 // to 512). Only the erased pixels are put back, with a soft edge: the rest of the picture keeps its own pixels and its full resolution.
@@ -29,6 +34,7 @@ import { PNG } from 'pngjs';
 import { designShapes } from './design_layer.mjs';
 import { textBoxes } from './text_mask.mjs';
 import { photoArea } from './photo_area.mjs';
+import { uiElements } from './ui_elements.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [a1, a2, a3] = process.argv.slice(2);
 let session = null;
@@ -59,10 +65,51 @@ const readLum = () => { for (let i = 0; i < N; i++) lum[i] = 0.299 * D[i * 4] + 
 readLum();
 const step = (i, j) => Math.max(Math.abs(D[i * 4] - D[j * 4]), Math.abs(D[i * 4 + 1] - D[j * 4 + 1]), Math.abs(D[i * 4 + 2] - D[j * 4 + 2]));
 
+const answer = (o, code = 0) => { console.log(JSON.stringify(o)); process.exitCode = code; };
+async function clean() {
 // 0. is there a photograph to clean? (photo_area.mjs) A picture whose largest photographic piece is under a fifth of it has no photo behind its design: nothing is
 // filled or written, and the answer gives the flat colours of its paint and where its photographic pieces are, for the page to draw and to crop.
 const photo = photoArea(D, W, H);
-if (photo.largest < 20) await say({ ok: true, noPhoto: true, photo });
+// 0b. the design's elements (ui_elements.mjs, a trained detector): the images among them that are photographs (most of their box grainy: avatars, a portrait, a product
+// shot) are named in the answer for the page to crop, on any picture, with a photo background or none (2026-11-13, Wingly leg 77: three avatars drawn as gradient
+// circles, nothing had named them); the rest of its boxes are used below
+const ortMod = await import('onnxruntime-node');
+let elements = [];
+if (fs.existsSync(path.join(here, 'ui_elements.onnx'))) {
+  const ses = await ortMod.InferenceSession.create(path.join(here, 'ui_elements.onnx'), { graphOptimizationLevel: 'all' });
+  elements = await uiElements(ortMod, ses, D, W, H);
+  try { await ses.release(); } catch (_) { /* freed on exit */ }
+}
+const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+// What the detector calls an image is a photo, an avatar, an illustration, a logo or an icon; which of them are photographs to crop is left to whoever looks at the sheet
+// (pixel rules judged it wrong on compressed exports and on line drawings over a sky, 2026-11-13). The ones the caller already took (a box, a lifted shape) are left out.
+const takenBy = (e) => { const cx = e.x + e.w / 2, cy = e.y + e.h / 2; if (extra && extra[(Math.min(H - 1, Math.round(cy)) * W + Math.min(W - 1, Math.round(cx))) * 4] > 8) return true; return boxes.some((b) => cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h); };
+const images = [];
+for (const e of elements) {
+  if (e.kind !== 'image' || e.w * e.h > N * 0.25 || takenBy(e)) continue;
+  if (images.some((p) => overlap(p, e) > Math.min(p.w * p.h, e.w * e.h) * 0.5)) continue;
+  images.push({ x: e.x, y: e.y, w: e.w, h: e.h, score: e.score });
+}
+images.splice(16);
+images.sort((a, b) => (Math.abs(a.y - b.y) < Math.min(a.h, b.h) / 2 ? a.x - b.x : a.y - b.y));
+photo.images = images;
+if (images.length) {
+  // the sheet: each image in a 120 x 120 cell, 4 to a row, in the list's order, on grey
+  const CELLS = 120, PAD = 8, cols = Math.min(4, images.length), rowsN = Math.ceil(images.length / 4);
+  const sheet = new PNG({ width: cols * (CELLS + PAD) + PAD, height: rowsN * (CELLS + PAD) + PAD });
+  sheet.data.fill(200);
+  images.forEach((e, k) => {
+    const ox = PAD + (k % 4) * (CELLS + PAD), oy = PAD + Math.floor(k / 4) * (CELLS + PAD), sc = Math.min(CELLS / e.w, CELLS / e.h, 4);
+    const tw = Math.max(1, Math.round(e.w * sc)), th = Math.max(1, Math.round(e.h * sc));
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+      const sx = Math.min(W - 1, e.x + Math.floor(x / sc)), sy = Math.min(H - 1, e.y + Math.floor(y / sc));
+      const si = (sy * W + sx) * 4, di = ((oy + y) * sheet.width + ox + x) * 4;
+      sheet.data[di] = D[si]; sheet.data[di + 1] = D[si + 1]; sheet.data[di + 2] = D[si + 2]; sheet.data[di + 3] = 255;
+    }
+  });
+  try { fs.writeFileSync(a2 + '.images.png', PNG.sync.write(sheet)); photo.sheet = a2 + '.images.png'; } catch (_) { /* the list is enough */ }
+}
+if (photo.largest < 20) return answer({ ok: true, noPhoto: true, photo });
 // 1. ruled lines
 const ruledRow = new Uint8Array(H), ruledCol = new Uint8Array(W);
 for (let y = 2; y < H - 2; y++) {
@@ -108,8 +155,19 @@ if (auto) {
     if (b && f.bw * f.bh > 2000) found.shapeBoxes.push({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
   }
 }
+// 2e. an element of the design that an erased card held only in part (a gradient card standing out of a dark one, a badge on a card's edge) is erased whole: a card's
+// box takes what lies inside it, and the detector's box says where the rest of that thing is (2026-11-13: a gradient card's lower part stayed in the Wingly plate)
+if (auto) {
+  const cards = found.shapeBoxes.slice();
+  for (const e of elements) {
+    if (e.kind === 'text' || e.w * e.h > N * 0.1) continue;
+    const r = { x: e.x, y: e.y, w: e.w, h: e.h };
+    const inCard = cards.some((c) => overlap(c, r) >= r.w * r.h * 0.5 && overlap(c, r) < r.w * r.h * 0.98);
+    if (inCard && eraseBox(r.x, r.y, r.x + r.w, r.y + r.h)) found.elementsErased = (found.elementsErased || 0) + 1;
+  }
+}
 // 2t. the words: PP-OCRv5 detection at the picture's own resolution (text_mask.mjs), each box grown a little; the model loaded only when it is in the library
-const ort = await import('onnxruntime-node');
+const ort = ortMod;
 if (auto && fs.existsSync(path.join(here, 'ppocr_det.onnx'))) {
   const det = await ort.InferenceSession.create(path.join(here, 'ppocr_det.onnx'), { graphOptimizationLevel: 'all' });
   const words = await textBoxes(ort, det, D, W, H);
@@ -151,7 +209,7 @@ for (const b of areasErased.slice()) {
     eraseBox(sx0, sy0, sx1 + 1, sy1 + 1); found.spills++;
   }
 }
-if (!areasErased.length && !found.lines.rows.length && !found.lines.cols.length) { await say({ ok: false, why: 'nothing to erase: no design shapes were found and no boxes or mask were given' }, 3); }
+if (!areasErased.length && !found.lines.rows.length && !found.lines.cols.length) { return answer({ ok: false, why: 'nothing to erase: no design shapes were found and no boxes or mask were given' }, 3); }
 
 // 5. groups of erased areas, each filled in its own window (a group never grows past half the picture: then it is filled in parts, each at its own detail)
 const groups = areasErased.map((b) => ({ ...b }));
@@ -237,4 +295,7 @@ for (const g of groups) {
 }
 fs.writeFileSync(a2, PNG.sync.write(src));
 found.shapeBoxes = found.shapeBoxes.slice(0, 40);
-await say({ ok: true, filled: areas.length, areas: areas.slice(0, 60), found, photo });
+return answer({ ok: true, filled: areas.length, areas: areas.slice(0, 60), found, photo });
+}
+await clean();
+if (session) { try { await session.release(); } catch (_) { /* freed on exit */ } }

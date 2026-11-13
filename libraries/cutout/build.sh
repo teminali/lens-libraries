@@ -22,6 +22,8 @@ OCR_URL="$(field ocrDetUrl)"
 OCR_SHA="$(field ocrDetSha256)"
 MIGAN_URL="$(field miganUrl)"
 MIGAN_SHA="$(field miganSha256)"
+UI_FILE="$(field uiElementsFile)"
+UI_SHA="$(field uiElementsSha256)"
 
 case "$(uname -s)" in
   Darwin) OS=darwin; NODE_OS=darwin ;;
@@ -74,6 +76,11 @@ curl -fsSL "$OCR_URL" -o "$OUT/engine/ppocr_det.onnx"
 [ "$(sha256 "$OUT/engine/ppocr_det.onnx")" = "$OCR_SHA" ] || { echo "build.sh: the text detection model does not match library.json's sha256" >&2; exit 1; }
 curl -fsSL "$MIGAN_URL" -o "$OUT/engine/migan.onnx"
 [ "$(sha256 "$OUT/engine/migan.onnx")" = "$MIGAN_SHA" ] || { echo "build.sh: the MI-GAN model does not match library.json's sha256" >&2; exit 1; }
+# the UI-element detector is our own export (tools/export_ui_elements.py), so it comes from the repo's dist/models, not from a URL
+UI_SRC="$HERE/../../$UI_FILE"
+[ -f "$UI_SRC" ] || { echo "build.sh: $UI_FILE is missing: make it with libraries/cutout/tools/export_ui_elements.py" >&2; exit 1; }
+cp "$UI_SRC" "$OUT/engine/ui_elements.onnx"
+[ "$(sha256 "$OUT/engine/ui_elements.onnx")" = "$UI_SHA" ] || { echo "build.sh: the UI-element detector does not match library.json's sha256" >&2; exit 1; }
 
 # 4. It answers for its version from where it stands, and each system keeps only its own launcher.
 if [ "$OS" = windows ]; then rm -f "$OUT/bin/cutout"; GOT="$("$NODE" "$OUT/engine/cutout.mjs" --version | tr -d '\r')"; else rm -f "$OUT/bin/cutout.cmd"; GOT="$("$OUT/bin/cutout" --version)"; fi

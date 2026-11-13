@@ -1,7 +1,7 @@
 // How much of a picture is photographic, and where: the test the plate makes before it fills anything (a UI screenshot has no photo behind its panels, and a "clean
 // plate" of one is grey mush that a page must not use).
 //
-//   photoArea(D, W, H) -> { share, largest, box: { x, y, w, h } | null, flat: [{ hex, share }] }
+//   photoArea(D, W, H) -> { share, largest, box: { x, y, w, h } | null, flat: [{ hex, share }], shareIn(rect) -> 0..1 }
 //     share: the part of the picture in photographic cells; largest: the part in the biggest connected piece of them (box: its box); flat: the colours of the
 //     exactly flat paint, most used first, each with its part of the picture.
 //
@@ -14,7 +14,7 @@ const CELL = 16;
 export function photoArea(D, W, H) {
   const L = (x, y) => { const i = (y * W + x) * 4; return 0.299 * D[i] + 0.587 * D[i + 1] + 0.114 * D[i + 2]; };
   const GW = Math.floor((W - 2) / CELL), GH = Math.floor((H - 2) / CELL), G = GW * GH;
-  if (G < 4) return { share: 0, largest: 0, box: null, flat: [] };
+  if (G < 4) return { share: 0, largest: 0, box: null, flat: [], shareIn: () => 0 };
   const kind = new Uint8Array(G); // 0 hard, 1 flat paint, 2 alive
   const paint = new Map();
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
@@ -50,5 +50,11 @@ export function photoArea(D, W, H) {
   }
   const hex = (p) => '#' + [p.r, p.g, p.b].map((v) => v.toString(16).padStart(2, '0')).join('');
   const flat = [...paint.values()].sort((a, b) => b.n - a.n).slice(0, 6).filter((p) => p.n / G >= 0.01).map((p) => ({ hex: hex(p), share: Math.round((1000 * p.n) / G) / 10 }));
-  return { share: Math.round((1000 * total) / G) / 10, largest: Math.round((1000 * best) / G) / 10, box, flat };
+  // the part of a rectangle that is photographic (cells it covers): an element of the design that is a photo has most of it
+  const shareIn = (r) => {
+    const gx0 = Math.max(0, Math.floor((r.x - 1) / CELL)), gy0 = Math.max(0, Math.floor((r.y - 1) / CELL)), gx1 = Math.min(GW - 1, Math.floor((r.x + r.w - 2) / CELL)), gy1 = Math.min(GH - 1, Math.floor((r.y + r.h - 2) / CELL));
+    let n = 0, p = 0; for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) { n++; p += photo[gy * GW + gx]; }
+    return n ? p / n : 0;
+  };
+  return { share: Math.round((1000 * total) / G) / 10, largest: Math.round((1000 * best) / G) / 10, box, flat, shareIn };
 }
