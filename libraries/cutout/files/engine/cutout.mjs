@@ -118,6 +118,39 @@ let designCut = 0;
           }
         }
       }
+      // A flat design shape in a hole of the mask, enclosed by the kept subject, that is NOT the background seen through (the white fill inside a wing's outline, which
+      // the salience model left out) belongs to the subject. Background trapped between the wing's lobes and the body is flat and enclosed too, so the test is the
+      // colour: a shape whose mean colour is within 40 levels of the background just outside the subject nearest it (the clear pixels reached from the rect's border,
+      // in the smallest ring around the shape's box that holds some) is that background and stays clear (2026-11-13, Wingly leg 78: one wing's fill lost; the first try without this test kept
+      // the trapped sky as blue blobs).
+      {
+        const out = new Uint8Array(W * H); const st = [];
+        const seed = (i) => { if (alpha[i] <= 16 && !out[i]) { out[i] = 1; st.push(i); } };
+        for (let x = 0; x < W; x++) { seed(x); seed((H - 1) * W + x); }
+        for (let y = 0; y < H; y++) { seed(y * W); seed(y * W + W - 1); }
+        while (st.length) { const j = st.pop(), x = j % W, y = (j - x) / W; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const q = yy * W + xx; if (!out[q] && alpha[q] <= 16) { out[q] = 1; st.push(q); } } }
+        const size = new Int32Array(shapes.length + 1), inHole = new Int32Array(shapes.length + 1), sum = new Float64Array((shapes.length + 1) * 3);
+        for (let i = 0; i < W * H; i++) { const k = dl[i]; if (!k) continue; size[k]++; if (alpha[i] <= 16 && !out[i]) inHole[k]++; for (let c = 0; c < 3; c++) sum[k * 3 + c] += region[i * 4 + c]; }
+        const fillK = new Uint8Array(shapes.length + 1);
+        for (let k = 1; k <= shapes.length; k++) {
+          if (size[k] < 12 || inHole[k] < size[k] * 0.8) continue;
+          // the NEAREST background: the ring around the shape's box grown 8, 16, 32 then 64 px, until it holds 24 clear pixels (a wide mean mixes in a cloud or a card)
+          const f = shapes[k - 1], bg = [0, 0, 0]; let n = 0;
+          for (const R of [8, 16, 32, 64]) {
+            bg[0] = bg[1] = bg[2] = 0; n = 0;
+            for (let y = Math.max(0, f.y0 - R); y <= Math.min(H - 1, f.y1 + R); y++) for (let x = Math.max(0, f.x0 - R); x <= Math.min(W - 1, f.x1 + R); x++) { const i = y * W + x; if (!out[i]) continue; n++; for (let c = 0; c < 3; c++) bg[c] += region[i * 4 + c]; }
+            if (n >= 24) break;
+          }
+          if (!n) continue; // nothing of the background near it to tell it from: left as it was
+          let d = 0; for (let c = 0; c < 3; c++) d = Math.max(d, Math.abs(sum[k * 3 + c] / size[k] - bg[c] / n));
+          if (d > 40) fillK[k] = 1;
+        }
+        for (let i = 0; i < W * H; i++) {
+          if (!fillK[dl[i]]) continue;
+          const x = i % W, y = (i - x) / W;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const q = yy * W + xx; if (!out[q]) alpha[q] = 255; }
+        }
+      }
       for (let k = 1; k <= shapes.length; k++) if (aside[k] && !touches[k]) designCut++;
       for (let i = 0; i < W * H; i++) {
         const k = dl[i]; if (!k || !aside[k] || touches[k]) continue;
