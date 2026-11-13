@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
+import { designShapes } from './design_layer.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [a1, a2, a3] = process.argv.slice(2);
 let session = null;
@@ -90,52 +91,9 @@ const meanAt = (x, y, r) => { const a = Math.max(0, x - r), b = Math.max(0, y - 
 const edge = new Uint8Array(N);
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (Math.abs(lum[y * W + x] - meanAt(x, y, 4)) > 18) edge[y * W + x] = 1;
 
-// 2. design shapes: regions of one colour (union-find over neighbours within 6 levels)
+// 2. design shapes (design_layer.mjs, shared with the cut-out)
 if (auto) {
-  const parent = new Int32Array(N); for (let i = 0; i < N; i++) parent[i] = i;
-  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const join = (a, b) => { a = find(a); b = find(b); if (a !== b) { if (a < b) parent[b] = a; else parent[a] = b; } };
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (x + 1 < W && step(i, i + 1) <= 6) join(i, i + 1); if (y + 1 < H && step(i, i + W) <= 6) join(i, i + W); }
-  const root = new Int32Array(N); for (let i = 0; i < N; i++) root[i] = find(i);
-  const stats = new Map();
-  for (let i = 0; i < N; i++) {
-    const r = root[i]; let s = stats.get(r);
-    if (!s) { s = { n: 0, x0: W, y0: H, x1: -1, y1: -1, s: [0, 0, 0], q: [0, 0, 0], edge: 0, sharp: 0 }; stats.set(r, s); }
-    const x = i % W, y = (i - x) / W;
-    s.n++; if (x < s.x0) s.x0 = x; if (x > s.x1) s.x1 = x; if (y < s.y0) s.y0 = y; if (y > s.y1) s.y1 = y;
-    for (let c = 0; c < 3; c++) { const v = D[i * 4 + c]; s.s[c] += v; s.q[c] += v * v; }
-    // sharp over two pixels: an anti-aliased edge (a letter, a rounded card) steps a little to its first blended pixel and fully by the second; a photo's soft
-    // edge does not get there in two (one pixel alone missed every card and button with text in it, 2026-11-13)
-    if (x > 0 && root[i - 1] !== r) { s.edge++; if (Math.max(step(i, i - 1), x > 1 ? step(i, i - 2) : 0) >= 24) s.sharp++; }
-    if (x + 1 < W && root[i + 1] !== r) { s.edge++; if (Math.max(step(i, i + 1), x + 2 < W ? step(i, i + 2) : 0) >= 24) s.sharp++; }
-    if (y > 0 && root[i - W] !== r) { s.edge++; if (Math.max(step(i, i - W), y > 1 ? step(i, i - 2 * W) : 0) >= 24) s.sharp++; }
-    if (y + 1 < H && root[i + W] !== r) { s.edge++; if (Math.max(step(i, i + W), y + 2 < H ? step(i, i + 2 * W) : 0) >= 24) s.sharp++; }
-  }
-  const MAX = N * 0.25;
-  const flat = [];
-  for (const [, s] of stats) {
-    if (s.n < 12 || s.n > MAX || !s.edge) continue;
-    let spread = 0; for (let c = 0; c < 3; c++) spread = Math.max(spread, Math.sqrt(Math.max(0, s.q[c] / s.n - (s.s[c] / s.n) ** 2)));
-    if (spread > 4 || s.sharp / s.edge < 0.5) continue;
-    const bw = s.x1 - s.x0 + 1, bh = s.y1 - s.y0 + 1;
-    if (bw * bh > s.n * 8 && Math.min(bw, bh) > 40) continue; // a long thin diagonal: its box would take the photo with it
-    flat.push({ ...s, bw, bh, small: s.n < 300 && Math.max(bw, bh) < 60 });
-  }
-  // A small flat shape is a letter only in a row of letters: two more of a like height on the same rows within three heights. A photo's small flat things (a far
-  // mast, a pole, a bird) stand alone (2026-11-13: the far turbines on the hero's hills were taken as shapes and erased). A large one (a button, a card) counts alone.
-  const smalls = flat.filter((f) => f.small);
-  for (const f of flat) {
-    if (f.small) {
-      const cy = (f.y0 + f.y1) / 2, h = f.bh;
-      let mates = 0;
-      for (const o of smalls) {
-        if (o === f || o.bh < h * 0.5 || o.bh > h * 2) continue;
-        if (Math.abs((o.y0 + o.y1) / 2 - cy) > h * 0.35) continue;
-        const gapX = Math.max(o.x0 - f.x1, f.x0 - o.x1);
-        if (gapX <= h * 3) { mates++; if (mates >= 2) break; }
-      }
-      if (mates < 2) continue;
-    }
+  for (const f of designShapes(D, W, H).shapes) {
     found.shapes++;
     const b = eraseBox(f.x0, f.y0, f.x1 + 1, f.y1 + 1);
     if (b && f.bw * f.bh > 2000) found.shapeBoxes.push({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });

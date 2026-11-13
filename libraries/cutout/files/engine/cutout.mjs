@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
+import { designShapes } from './design_layer.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = (() => { try { return fs.readFileSync(path.join(here, '..', 'VERSION'), 'utf8').trim(); } catch (_) { return '0.0.0'; } })();
 const [a1, a2, a3] = process.argv.slice(2);
@@ -66,34 +67,69 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   alpha[y * W + x] = a;
   if (a > 16) { if (x < bx0) bx0 = x; if (y < by0) by0 = y; if (x > bx1) bx1 = x; if (y > by1) by1 = y; }
 }
-// One subject, not every salient thing: the connected pieces of the mask are labelled, the largest is the subject, and a piece whose box touches the subject's box
-// (wings, a hand-held card) stays with it; the rest (a card or a bird across the page) is cleared. A region the caller names narrows this further.
-{
+// pieces of the mask: 4-connected pixels for which on(i) holds
+function piecesOf(on) {
   const label = new Int32Array(W * H); const sizes = [0]; const boxes = [null]; const stack = new Int32Array(W * H);
   for (let i = 0; i < W * H; i++) {
-    if (alpha[i] <= 16 || label[i]) continue;
+    if (!on(i) || label[i]) continue;
     const id = sizes.length; let n = 0, sp = 0; let x0 = W, y0 = H, x1 = -1, y1 = -1;
     stack[sp++] = i; label[i] = id;
     while (sp) {
       const j = stack[--sp]; n++; const x = j % W, y = (j - x) / W;
       if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      if (x > 0 && alpha[j - 1] > 16 && !label[j - 1]) { label[j - 1] = id; stack[sp++] = j - 1; }
-      if (x < W - 1 && alpha[j + 1] > 16 && !label[j + 1]) { label[j + 1] = id; stack[sp++] = j + 1; }
-      if (y > 0 && alpha[j - W] > 16 && !label[j - W]) { label[j - W] = id; stack[sp++] = j - W; }
-      if (y < H - 1 && alpha[j + W] > 16 && !label[j + W]) { label[j + W] = id; stack[sp++] = j + W; }
+      if (x > 0 && on(j - 1) && !label[j - 1]) { label[j - 1] = id; stack[sp++] = j - 1; }
+      if (x < W - 1 && on(j + 1) && !label[j + 1]) { label[j + 1] = id; stack[sp++] = j + 1; }
+      if (y > 0 && on(j - W) && !label[j - W]) { label[j - W] = id; stack[sp++] = j - W; }
+      if (y < H - 1 && on(j + W) && !label[j + W]) { label[j + W] = id; stack[sp++] = j + W; }
     }
     sizes.push(n); boxes.push([x0, y0, x1, y1]);
   }
   let main = 0; for (let k = 1; k < sizes.length; k++) if (!main || sizes[k] > sizes[main]) main = k;
+  return { label, sizes, boxes, main };
+}
+// The design's own shapes are not the subject (2026-11-13, Wingly leg 72: the lift of the man took the "Get started" button under his feet). A design shape
+// (design_layer.mjs: one colour, sharp edge; the detector the plate uses) that the mask took in, half of its pixels or more, is set aside; the subject's body is
+// found without them; a set-aside shape that touches the body (wings drawn around a person, a badge on a jacket) belongs to it and stays, and one apart from it (a
+// button, a label) is cut out pixel by pixel. A flat background around the subject (a card behind a portrait) is never in the mask, so it is not touched.
+let designCut = 0;
+{
+  const region = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const s0 = px(x, y), d0 = (y * W + x) * 4; region[d0] = d[s0]; region[d0 + 1] = d[s0 + 1]; region[d0 + 2] = d[s0 + 2]; region[d0 + 3] = 255; }
+  const { shapes, label: dl } = designShapes(region, W, H);
+  if (shapes.length) {
+    const inMask = new Int32Array(shapes.length + 1);
+    for (let i = 0; i < W * H; i++) if (dl[i] && alpha[i] > 16) inMask[dl[i]]++;
+    const aside = new Uint8Array(shapes.length + 1);
+    shapes.forEach((f, k) => { if (inMask[k + 1] >= f.n * 0.5) aside[k + 1] = 1; });
+    const body = piecesOf((i) => alpha[i] > 16 && !aside[dl[i]]);
+    if (body.main) {
+      const touches = new Uint8Array(shapes.length + 1);
+      for (let i = 0; i < W * H; i++) {
+        const k = dl[i]; if (!k || !aside[k] || touches[k]) continue;
+        const x = i % W, y = (i - x) / W;
+        for (let dy = -2; dy <= 2 && !touches[k]; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && body.label[yy * W + xx] === body.main) { touches[k] = 1; break; } }
+      }
+      for (let k = 1; k <= shapes.length; k++) if (aside[k] && !touches[k]) designCut++;
+      for (let i = 0; i < W * H; i++) {
+        const k = dl[i]; if (!k || !aside[k] || touches[k]) continue;
+        const x = i % W, y = (i - x) / W;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && body.label[yy * W + xx] !== body.main) alpha[yy * W + xx] = 0; }
+      }
+    }
+  }
+}
+// One subject, not every salient thing: the largest piece is the subject, and a piece whose box touches the subject's box (a hand-held card) stays with it, unless it
+// is a scrap (under 0.5% of the subject: the rim of something cut out); the rest (a card or a bird across the page) is cleared. A region the caller names narrows this.
+{
+  const { label, sizes, boxes, main } = piecesOf((i) => alpha[i] > 16);
   if (main) {
     const [mx0, my0, mx1, my1] = boxes[main]; const pad = Math.round(Math.max(mx1 - mx0, my1 - my0) * 0.02);
     const keep = new Uint8Array(sizes.length);
-    for (let k = 1; k < sizes.length; k++) { const [a, b, c, e] = boxes[k]; keep[k] = k === main || (a <= mx1 + pad && c >= mx0 - pad && b <= my1 + pad && e >= my0 - pad) ? 1 : 0; }
+    for (let k = 1; k < sizes.length; k++) { const [a, b, c, e] = boxes[k]; keep[k] = k === main || (sizes[k] >= sizes[main] * 0.005 && a <= mx1 + pad && c >= mx0 - pad && b <= my1 + pad && e >= my0 - pad) ? 1 : 0; }
     bx0 = W; by0 = H; bx1 = -1; by1 = -1;
     for (let i = 0; i < W * H; i++) {
-      const k = label[i];
       if (alpha[i] <= 16) continue;
-      if (!keep[k]) { alpha[i] = 0; continue; }
+      if (!keep[label[i]]) { alpha[i] = 0; continue; }
       const x = i % W, y = (i - x) / W; if (x < bx0) bx0 = x; if (y < by0) by0 = y; if (x > bx1) bx1 = x; if (y > by1) by1 = y;
     }
   }
@@ -106,5 +142,5 @@ for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
   const al = alpha[(by0 + y) * W + bx0 + x]; png.data[d] = al ? src.data[s] : 0; png.data[d + 1] = al ? src.data[s + 1] : 0; png.data[d + 2] = al ? src.data[s + 2] : 0; png.data[d + 3] = al;
 }
 fs.writeFileSync(a2, PNG.sync.write(png));
-await say({ ok: true, x: ox + bx0, y: oy + by0, w: ow, h: oh });
+await say({ ok: true, x: ox + bx0, y: oy + by0, w: ow, h: oh, designCut });
 }
