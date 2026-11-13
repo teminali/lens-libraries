@@ -1,0 +1,10 @@
+{
+  "name": "lens-cutout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "onnxruntime-node": "1.23.2",
+    "pngjs": "7.0.0"
+  }
+}

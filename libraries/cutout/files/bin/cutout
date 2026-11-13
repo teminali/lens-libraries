@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lens Code's cut-out engine: runs engine/cutout.mjs on the Node packed with this library.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$HERE/node/bin/node" "$HERE/engine/cutout.mjs" "$@"

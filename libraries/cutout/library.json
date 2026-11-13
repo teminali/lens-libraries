@@ -1,0 +1,19 @@
+{
+  "name": "Cut-out",
+  "summary": "Lifts the main subject of a picture (a person, a product, an illustration) onto a transparent background, for copying a design into a page.",
+  "license": "MIT (BiRefNet model, onnxruntime, pngjs, Node.js)",
+  "check": {
+    "run": "bin/cutout",
+    "args": [
+      "--version"
+    ]
+  },
+  "upstream": {
+    "node": "22.12.0",
+    "onnxruntime-node": "1.23.2",
+    "pngjs": "7.0.0",
+    "model": "BiRefNet general lite (bb_swin_v1_tiny, epoch 232), the ONNX export rembg publishes",
+    "modelUrl": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+    "modelSha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"
+  }
+}
