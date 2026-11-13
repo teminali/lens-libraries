@@ -18,6 +18,8 @@ MODEL_URL="$(field modelUrl)"
 MODEL_SHA="$(field modelSha256)"
 LAMA_URL="$(field lamaUrl)"
 LAMA_SHA="$(field lamaSha256)"
+OCR_URL="$(field ocrDetUrl)"
+OCR_SHA="$(field ocrDetSha256)"
 
 case "$(uname -s)" in
   Darwin) OS=darwin; NODE_OS=darwin ;;
@@ -66,6 +68,8 @@ curl -fsSL "$MODEL_URL" -o "$OUT/engine/model.onnx"
 [ "$(sha256 "$OUT/engine/model.onnx")" = "$MODEL_SHA" ] || { echo "build.sh: the model does not match library.json's sha256" >&2; exit 1; }
 curl -fsSL "$LAMA_URL" -o "$OUT/engine/lama.onnx"
 [ "$(sha256 "$OUT/engine/lama.onnx")" = "$LAMA_SHA" ] || { echo "build.sh: the LaMa model does not match library.json's sha256" >&2; exit 1; }
+curl -fsSL "$OCR_URL" -o "$OUT/engine/ppocr_det.onnx"
+[ "$(sha256 "$OUT/engine/ppocr_det.onnx")" = "$OCR_SHA" ] || { echo "build.sh: the text detection model does not match library.json's sha256" >&2; exit 1; }
 
 # 4. It answers for its version from where it stands, and each system keeps only its own launcher.
 if [ "$OS" = windows ]; then rm -f "$OUT/bin/cutout"; GOT="$("$NODE" "$OUT/engine/cutout.mjs" --version | tr -d '\r')"; else rm -f "$OUT/bin/cutout.cmd"; GOT="$("$OUT/bin/cutout" --version)"; fi

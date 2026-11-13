@@ -1,7 +1,7 @@
 {
   "name": "Cut-out",
-  "summary": "Lifts the main subject of a picture onto a transparent background, and makes a clean plate of a picture (its words and boxes erased and filled), for copying a design into a page.",
-  "license": "MIT (BiRefNet model, onnxruntime, pngjs, Node.js); Apache-2.0 (LaMa model)",
+  "summary": "Lifts the main subject of a picture onto a transparent background, and makes a clean plate of a picture (its words, buttons and cards erased and filled), for copying a design into a page.",
+  "license": "MIT (BiRefNet model, onnxruntime, pngjs, Node.js); Apache-2.0 (LaMa model, PP-OCRv5 text detection)",
   "check": {
     "run": "bin/cutout",
     "args": [
@@ -17,6 +17,9 @@
     "modelSha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
     "lamaModel": "big-lama (advimman/lama), the ONNX port by Carve (Carve/LaMa-ONNX lama_fp32.onnx, 512 x 512)",
     "lamaUrl": "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx",
-    "lamaSha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+    "lamaSha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
+    "ocrDetModel": "PP-OCRv5 server text detection (PaddleOCR), ONNX export from monkt/paddleocr-onnx detection/v5",
+    "ocrDetUrl": "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v5/det.onnx",
+    "ocrDetSha256": "61824840edf6e74581898930b8091b1b2318f4b2705a2e8a40ad3de7ac480133"
   }
 }

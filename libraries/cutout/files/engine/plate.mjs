@@ -17,8 +17,8 @@
 //   mask: exact shapes (the photos a page lifts and places on top).
 //   spill: an edge that crosses an erased area's border and is joined to edges inside it, followed outwards, when it is small beside the area (a head above its
 //     card, the rest of a button a box half covers); a long run (the horizon, a turbine behind a card) is not followed.
-//   lines of text: from each letter-sized shape found, along its own rows while ink continues close by and the rows above and below stay quiet (a photo's
-//     texture goes on above and below a row; a line of text has its leading). A small flat shape is a letter only with two more of its height on its rows.
+//   words: PP-OCRv5 text detection (text_mask.mjs, engine/ppocr_det.onnx), at the picture's own resolution, on any kind of picture (clean screenshot, compressed
+//     export, text over a photo). The flat-shape test above is used only for the UI's larger surfaces.
 // WHAT IT CANNOT FIND ON ITS OWN: a photographic thing placed on the background with no flat part (a cut-out person, a product shot): box it or pass its mask.
 // Each group of erased areas is filled in a square window of its surroundings (at least 512 px, scaled to 512), and only the erased pixels are put back, with a
 // soft edge: the rest of the picture keeps its own pixels and its full resolution.
@@ -27,6 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { designShapes } from './design_layer.mjs';
+import { textBoxes } from './text_mask.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [a1, a2, a3] = process.argv.slice(2);
 let session = null;
@@ -45,7 +46,7 @@ const S = 512;
 const GROW = Math.max(3, Math.round(Math.min(W, H) * 0.003));
 const hole = new Uint8Array(N);
 const areasErased = [];
-const found = { shapes: 0, shapeBoxes: [], textRuns: 0, boxes: 0, masked: 0, spills: 0, lines: { rows: [], cols: [] } };
+const found = { shapes: 0, shapeBoxes: [], textBoxes: 0, textRuns: 0, boxes: 0, masked: 0, spills: 0, lines: { rows: [], cols: [] } };
 const eraseBox = (x0, y0, x1, y1, grow = GROW) => {
   x0 = Math.max(0, Math.floor(x0 - grow)); y0 = Math.max(0, Math.floor(y0 - grow)); x1 = Math.min(W, Math.ceil(x1 + grow)); y1 = Math.min(H, Math.ceil(y1 + grow));
   if (x1 - x0 < 1 || y1 - y0 < 1) return null;
@@ -92,45 +93,34 @@ const edge = new Uint8Array(N);
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (Math.abs(lum[y * W + x] - meanAt(x, y, 4)) > 18) edge[y * W + x] = 1;
 
 // 2. design shapes (design_layer.mjs, shared with the cut-out)
+// Text is not taken from these shapes any more: PP-OCRv5 (step 2t) finds it on every kind of picture; the flat-shape test is kept for the UI's own surfaces (a
+// button, a card, an icon, a ring), which are larger than a letter (2026-11-13: letter rules held on a clean screenshot and failed on a compressed export).
 if (auto) {
   for (const f of designShapes(D, W, H).shapes) {
+    if (f.ink || (f.n < 300 && Math.max(f.bw, f.bh) < 60)) continue;
     found.shapes++;
     const b = eraseBox(f.x0, f.y0, f.x1 + 1, f.y1 + 1);
     if (b && f.bw * f.bh > 2000) found.shapeBoxes.push({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
   }
 }
-// 2b. lines of text: letters come in lines. A letter-sized shape found above leads along its own rows, left and right, while there is ink close by (a gap of at
-//     most one and a half letter heights, at most 30 heights each way), so the letters the flat test missed (thin strokes, small sizes) go with the ones it found.
-{
-  const letters = areasErased.filter((b) => { const h = b.y1 - b.y0, w = b.x1 - b.x0; return h >= 6 && h <= 140 && w <= h * 3 + 20; });
-  const colInk = (x, y0, y1) => { for (let y = y0; y < y1; y++) if (edge[y * W + x]) return true; return false; };
-  // a line of text has quiet rows above and below it (its leading); a photo's texture goes on above and below, and the line stops where it starts
-  const busy = (x, y0, y1) => { const m = Math.max(2, Math.round((y1 - y0) * 0.4)); let n = 0; for (let y = Math.max(0, y0 - m); y < y0; y++) n += edge[y * W + x]; for (let y = y1; y < Math.min(H, y1 + m); y++) n += edge[y * W + x]; return n > 1; };
-  let lines = 0;
-  for (const g of letters) {
-    const h = g.y1 - g.y0, gapMax = Math.ceil(h * 1.5), far = h * 30;
-    let right = g.x1 - 1, gap = 0, rough = 0;
-    for (let x = g.x1; x < W && x < g.x1 + far && gap <= gapMax; x++) { if (busy(x, g.y0, g.y1)) { if (++rough >= 3) break; } else rough = 0; if (colInk(x, g.y0, g.y1)) { right = x; gap = 0; } else gap++; }
-    let left = g.x0, gap2 = 0; rough = 0;
-    for (let x = g.x0 - 1; x >= 0 && x > g.x0 - far && gap2 <= gapMax; x--) { if (busy(x, g.y0, g.y1)) { if (++rough >= 3) break; } else rough = 0; if (colInk(x, g.y0, g.y1)) { left = x; gap2 = 0; } else gap2++; }
-    // the line takes some of its quiet rows above and below too: the dots of i and j, accents and the tops of taller letters sit there (only rows that are quiet
-    // along the line: a photo above the line is not taken)
-    let top = g.y0, bottom = g.y1;
-    const quietRow = (y) => { let n = 0; for (let x = left; x <= right; x++) n += edge[y * W + x]; return n <= Math.max(2, (right - left + 1) * 0.15); };
-    for (let k = 1; k <= Math.round(h * 0.45) && g.y0 - k >= 0; k++) { if (!quietRow(g.y0 - k) && k > Math.round(h * 0.45)) break; top = g.y0 - k; }
-    for (let k = 0; k < Math.round(h * 0.3) && g.y1 + k < H; k++) bottom = g.y1 + k + 1;
-    const busyAbove = (() => { let n = 0; for (let y = Math.max(0, top - Math.round(h * 0.3)); y < top; y++) for (let x = left; x <= right; x++) n += edge[y * W + x]; return n > (right - left + 1) * 0.3; })();
-    if (busyAbove) top = g.y0;
-    if (right > g.x1 - 1 || left < g.x0 || top < g.y0) { eraseBox(left, top, right + 1, bottom, 1); lines++; }
-  }
-  found.textRuns = lines;
+// 2t. the words: PP-OCRv5 detection at the picture's own resolution (text_mask.mjs), each box grown a little; the model loaded only when it is in the library
+const ort = await import('onnxruntime-node');
+if (auto && fs.existsSync(path.join(here, 'ppocr_det.onnx'))) {
+  const det = await ort.InferenceSession.create(path.join(here, 'ppocr_det.onnx'), { graphOptimizationLevel: 'all' });
+  const words = await textBoxes(ort, det, D, W, H);
+  for (const b of words) eraseBox(b.x, b.y, b.x + b.w, b.y + b.h, Math.max(2, Math.round(GROW / 2)));
+  found.textBoxes = words.length;
+  try { await det.release(); } catch (_) { /* freed on exit */ }
 }
 // 3. the caller's boxes and exact shapes
 for (const b of boxes) { const n = [b.x, b.y, b.w, b.h].map(Number); if (n.every(Number.isFinite) && n[2] > 0 && n[3] > 0 && eraseBox(n[0], n[1], n[0] + n[2], n[1] + n[3])) found.boxes++; }
 if (extra) {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
-  for (let i = 0; i < N; i++) if (extra[i * 4] > 127) { const x = i % W, y = (i - x) / W; for (let dy = -GROW; dy <= GROW; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; hole.fill(1, yy * W + Math.max(0, x - GROW), yy * W + Math.min(W, x + GROW + 1)); } if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (x1 >= 0) { areasErased.push({ x0: Math.max(0, x0 - GROW), y0: Math.max(0, y0 - GROW), x1: Math.min(W, x1 + GROW + 1), y1: Math.min(H, y1 + GROW + 1) }); found.masked = 1; }
+  // a lifted shape is erased from its soft edge outwards (any alpha above 8, not only the solid part) and grown by 0.6% of the short side: the halo of a subject (its
+  // shadow, the blend of its edge) is not left for the fill to spread (2026-11-13: a dark smear across the Wingly cloud where the man had been)
+  const G = Math.max(GROW, Math.round(Math.min(W, H) * 0.006));
+  for (let i = 0; i < N; i++) if (extra[i * 4] > 8) { const x = i % W, y = (i - x) / W; for (let dy = -G; dy <= G; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; hole.fill(1, yy * W + Math.max(0, x - G), yy * W + Math.min(W, x + G + 1)); } if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 >= 0) { areasErased.push({ x0: Math.max(0, x0 - G), y0: Math.max(0, y0 - G), x1: Math.min(W, x1 + G + 1), y1: Math.min(H, y1 + G + 1) }); found.masked = 1; }
 }
 // 4. spill
 const seen = new Uint8Array(N);
@@ -170,7 +160,6 @@ for (let merged = true; merged;) {
     if (a.x0 - pad < c.x1 && c.x0 - pad < a.x1 && a.y0 - pad < c.y1 && c.y0 - pad < a.y1) { groups[i] = u; groups.splice(j, 1); merged = true; }
   }
 }
-const ort = await import('onnxruntime-node');
 session = await ort.InferenceSession.create(path.join(here, 'lama.onnx'), { graphOptimizationLevel: 'all' });
 const areas = [];
 for (const g of groups) {
