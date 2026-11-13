@@ -4,7 +4,7 @@
 #   libraries/cutout/build.sh 1.0.0
 #
 # The archive holds a Node.js runtime, engine/cutout.mjs with onnxruntime-node and pngjs installed beside it (onnxruntime's native part for this platform only),
-# the model, the launchers and the notice. Nothing outside the folder is needed to run it. engine/cutout.mjs and engine/model.onnx are the same bytes on
+# the models, the launchers and the notice. Nothing outside the folder is needed to run it. engine/cutout.mjs and engine/model.onnx are the same bytes on
 # every platform: one engine, one model, so a cut-out on Windows is the cut-out on a Mac.
 # On Windows, run it from Git Bash: the launcher there is bin/cutout.cmd and the runtime node/node.exe.
 set -euo pipefail
@@ -16,6 +16,8 @@ field() { sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$HERE/library.json" | hea
 NODE_VERSION="$(field node)"
 MODEL_URL="$(field modelUrl)"
 MODEL_SHA="$(field modelSha256)"
+LAMA_URL="$(field lamaUrl)"
+LAMA_SHA="$(field lamaSha256)"
 
 case "$(uname -s)" in
   Darwin) OS=darwin; NODE_OS=darwin ;;
@@ -59,9 +61,11 @@ for d in "$ORT_BIN/$KEEP"/*; do [ "$(basename "$d")" = "$ARCH" ] || rm -rf "$d";
 rm -rf "$OUT/node/lib/node_modules/npm" "$OUT/node/lib/node_modules/corepack" "$OUT/node/node_modules" "$OUT/node/include" "$OUT/node/share"
 rm -f "$OUT/node/bin/npm" "$OUT/node/bin/npx" "$OUT/node/bin/corepack" "$OUT/node/npm" "$OUT/node/npm.cmd" "$OUT/node/npx" "$OUT/node/npx.cmd" "$OUT/node/corepack" "$OUT/node/corepack.cmd"
 
-# 3. The model, checked against the sha256 in library.json.
+# 3. The models, each checked against its sha256 in library.json: BiRefNet for the cut-out, LaMa for the clean plate.
 curl -fsSL "$MODEL_URL" -o "$OUT/engine/model.onnx"
 [ "$(sha256 "$OUT/engine/model.onnx")" = "$MODEL_SHA" ] || { echo "build.sh: the model does not match library.json's sha256" >&2; exit 1; }
+curl -fsSL "$LAMA_URL" -o "$OUT/engine/lama.onnx"
+[ "$(sha256 "$OUT/engine/lama.onnx")" = "$LAMA_SHA" ] || { echo "build.sh: the LaMa model does not match library.json's sha256" >&2; exit 1; }
 
 # 4. It answers for its version from where it stands, and each system keeps only its own launcher.
 if [ "$OS" = windows ]; then rm -f "$OUT/bin/cutout"; GOT="$("$NODE" "$OUT/engine/cutout.mjs" --version | tr -d '\r')"; else rm -f "$OUT/bin/cutout.cmd"; GOT="$("$OUT/bin/cutout" --version)"; fi
