@@ -103,11 +103,20 @@ let designCut = 0;
     shapes.forEach((f, k) => { if (inMask[k + 1] >= f.n * 0.5) aside[k + 1] = 1; });
     const body = piecesOf((i) => alpha[i] > 16 && !aside[dl[i]]);
     if (body.main) {
+      // attached through other kept shapes counts too: a wing's white fill touches its outline, and only the outline touches the body (2026-11-13, Wingly leg 78:
+      // the right wing's fill was cut and a scrap of its outline was left by the phone). Passes repeat until nothing more joins.
       const touches = new Uint8Array(shapes.length + 1);
-      for (let i = 0; i < W * H; i++) {
-        const k = dl[i]; if (!k || !aside[k] || touches[k]) continue;
-        const x = i % W, y = (i - x) / W;
-        for (let dy = -2; dy <= 2 && !touches[k]; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && body.label[yy * W + xx] === body.main) { touches[k] = 1; break; } }
+      for (let pass = 0, grew = true; grew && pass < 6; pass++) {
+        grew = false;
+        for (let i = 0; i < W * H; i++) {
+          const k = dl[i]; if (!k || !aside[k] || touches[k]) continue;
+          const x = i % W, y = (i - x) / W;
+          for (let dy = -2; dy <= 2 && !touches[k]; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+            const j = yy * W + xx, o = dl[j];
+            if (body.label[j] === body.main || (o && o !== k && aside[o] && touches[o])) { touches[k] = 1; grew = true; break; }
+          }
+        }
       }
       for (let k = 1; k <= shapes.length; k++) if (aside[k] && !touches[k]) designCut++;
       for (let i = 0; i < W * H; i++) {
