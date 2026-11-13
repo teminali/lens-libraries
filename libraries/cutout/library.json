@@ -1,7 +1,7 @@
 {
   "name": "Cut-out",
   "summary": "Lifts the main subject of a picture onto a transparent background, and makes a clean plate of a picture (its words, buttons and cards erased and filled), for copying a design into a page.",
-  "license": "MIT (BiRefNet model, onnxruntime, pngjs, Node.js); Apache-2.0 (LaMa model, PP-OCRv5 text detection)",
+  "license": "MIT (BiRefNet model, MI-GAN model, onnxruntime, pngjs, Node.js); Apache-2.0 (LaMa model, PP-OCRv5 text detection)",
   "check": {
     "run": "bin/cutout",
     "args": [
@@ -20,6 +20,9 @@
     "lamaSha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
     "ocrDetModel": "PP-OCRv5 server text detection (PaddleOCR), ONNX export from monkt/paddleocr-onnx detection/v5",
     "ocrDetUrl": "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v5/det.onnx",
-    "ocrDetSha256": "61824840edf6e74581898930b8091b1b2318f4b2705a2e8a40ad3de7ac480133"
+    "ocrDetSha256": "61824840edf6e74581898930b8091b1b2318f4b2705a2e8a40ad3de7ac480133",
+    "miganModel": "MI-GAN 512 pipeline (Picsart AI Research, MIT code and MIT weights), ONNX from huggingface.co/andraniksargsyan/migan",
+    "miganUrl": "https://huggingface.co/andraniksargsyan/migan/resolve/main/migan_pipeline_v2.onnx",
+    "miganSha256": "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b"
   }
 }

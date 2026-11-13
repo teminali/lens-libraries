@@ -20,14 +20,15 @@
 //   words: PP-OCRv5 text detection (text_mask.mjs, engine/ppocr_det.onnx), at the picture's own resolution, on any kind of picture (clean screenshot, compressed
 //     export, text over a photo). The flat-shape test above is used only for the UI's larger surfaces.
 // WHAT IT CANNOT FIND ON ITS OWN: a photographic thing placed on the background with no flat part (a cut-out person, a product shot): box it or pass its mask.
-// Each group of erased areas is filled in a square window of its surroundings (at least 512 px, scaled to 512), and only the erased pixels are put back, with a
-// soft edge: the rest of the picture keeps its own pixels and its full resolution.
+// Thin and small holes are filled by MI-GAN in one pass at full resolution; each big group by LaMa in a square window of its surroundings (at least 512 px, scaled
+// to 512). Only the erased pixels are put back, with a soft edge: the rest of the picture keeps its own pixels and its full resolution.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { designShapes } from './design_layer.mjs';
 import { textBoxes } from './text_mask.mjs';
+import { photoArea } from './photo_area.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [a1, a2, a3] = process.argv.slice(2);
 let session = null;
@@ -58,6 +59,10 @@ const readLum = () => { for (let i = 0; i < N; i++) lum[i] = 0.299 * D[i * 4] + 
 readLum();
 const step = (i, j) => Math.max(Math.abs(D[i * 4] - D[j * 4]), Math.abs(D[i * 4 + 1] - D[j * 4 + 1]), Math.abs(D[i * 4 + 2] - D[j * 4 + 2]));
 
+// 0. is there a photograph to clean? (photo_area.mjs) A picture whose largest photographic piece is under a fifth of it has no photo behind its design: nothing is
+// filled or written, and the answer gives the flat colours of its paint and where its photographic pieces are, for the page to draw and to crop.
+const photo = photoArea(D, W, H);
+if (photo.largest < 20) await say({ ok: true, noPhoto: true, photo });
 // 1. ruled lines
 const ruledRow = new Uint8Array(H), ruledCol = new Uint8Array(W);
 for (let y = 2; y < H - 2; y++) {
@@ -160,8 +165,26 @@ for (let merged = true; merged;) {
     if (a.x0 - pad < c.x1 && c.x0 - pad < a.x1 && a.y0 - pad < c.y1 && c.y0 - pad < a.y1) { groups[i] = u; groups.splice(j, 1); merged = true; }
   }
 }
-session = await ort.InferenceSession.create(path.join(here, 'lama.onnx'), { graphOptimizationLevel: 'all' });
 const areas = [];
+// Two fillers, each for what it does well (2026-11-13: MI-GAN on the hole of a lifted man painted an icy mountain into the cloud; LaMa per window took 90 s for text):
+//  - MI-GAN (engine/migan.onnx, MIT; its pipeline crops around each hole itself) fills the thin and small holes (lines of text, buttons, small cards) in one pass at the
+//    picture's own resolution, in about 2 s;
+//  - LaMa fills the big holes (a lifted person, a large panel), each in a window of its surroundings.
+// A group is small when it is thin (its short side at most 120 px) or covers at most 2% of the picture.
+const small = (g) => Math.min(g.x1 - g.x0, g.y1 - g.y0) <= 120 || (g.x1 - g.x0) * (g.y1 - g.y0) <= N * 0.02;
+if (fs.existsSync(path.join(here, 'migan.onnx')) && groups.some(small)) {
+  const mg = await ort.InferenceSession.create(path.join(here, 'migan.onnx'), { graphOptimizationLevel: 'all' });
+  const img = new Uint8Array(3 * N), mask = new Uint8Array(N).fill(255); // 0 is a hole
+  for (let i = 0; i < N; i++) { img[i] = D[i * 4]; img[N + i] = D[i * 4 + 1]; img[2 * N + i] = D[i * 4 + 2]; }
+  const mine = groups.filter(small);
+  for (const g of mine) for (let y = g.y0; y < g.y1; y++) for (let x = g.x0; x < g.x1; x++) if (hole[y * W + x]) mask[y * W + x] = 0;
+  const outM = (await mg.run({ image: new ort.Tensor('uint8', img, [1, 3, H, W]), mask: new ort.Tensor('uint8', mask, [1, 1, H, W]) })).result.data;
+  for (let i = 0; i < N; i++) if (!mask[i]) { D[i * 4] = outM[i]; D[i * 4 + 1] = outM[N + i]; D[i * 4 + 2] = outM[2 * N + i]; D[i * 4 + 3] = 255; hole[i] = 0; }
+  for (const g of mine) areas.push({ x: g.x0, y: g.y0, w: g.x1 - g.x0, h: g.y1 - g.y0, by: 'migan' });
+  found.filledSmall = mine.length;
+  try { await mg.release(); } catch (_) { /* freed on exit */ }
+}
+session = await ort.InferenceSession.create(path.join(here, 'lama.onnx'), { graphOptimizationLevel: 'all' });
 for (const g of groups) {
   const gw = g.x1 - g.x0, gh = g.y1 - g.y0;
   let any = false; for (let y = g.y0; y < g.y1 && !any; y++) for (let x = g.x0; x < g.x1; x++) if (hole[y * W + x]) { any = true; break; }
@@ -214,4 +237,4 @@ for (const g of groups) {
 }
 fs.writeFileSync(a2, PNG.sync.write(src));
 found.shapeBoxes = found.shapeBoxes.slice(0, 40);
-await say({ ok: true, filled: areas.length, areas: areas.slice(0, 60), found });
+await say({ ok: true, filled: areas.length, areas: areas.slice(0, 60), found, photo });
