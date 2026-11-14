@@ -28,5 +28,13 @@ node tools/publish.js lfm3-omni 1.0.0 any=~/.cache/lens-models/dist/lfm3-omni-1.
 node tools/publish.js                            # re-sign and re-publish the index alone
 ```
 
+A big archive can be built and attached on GitHub's machines instead (the cut-out library's UI-element detector is exported there from its pinned source by
+`libraries/cutout/tools/make_ui_elements.sh`); the index is then signed here as always:
+
+```sh
+gh workflow run build-library.yml -f id=cutout -f version=1.1.0    # or -f id=lfm3-omni -f version=1.0.0
+node tools/publish.js                                               # after the run: re-sign and re-publish the index
+```
+
 The index is signed on the publishing computer with the key in `~/.lens-libraries/signing-key.pem` (or `LIBRARIES_SIGNING_KEY_FILE`); the key is never
 committed and never stored on GitHub.

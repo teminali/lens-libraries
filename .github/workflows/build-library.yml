@@ -1,0 +1,92 @@
+# Builds one library's archive on GitHub's machines and attaches it to the release `<id>-v<version>` (made if missing, titled as tools/publish.js titles it).
+# It never touches the `index` release and holds no signing key: after it, the index is signed on the publishing computer with `node tools/publish.js`.
+name: Build a library
+
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: Library (its folder under libraries/)
+        required: true
+        type: choice
+        options:
+          - cutout
+          - lfm3-omni
+      version:
+        description: Version (x.y.z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  cutout:
+    if: inputs.id == 'cutout'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.7'
+      - name: The UI-element detector, exported from its pinned source in its pinned environment
+        run: |
+          PYTHON="$(command -v python3.12)" bash libraries/cutout/tools/make_ui_elements.sh
+      - name: Build the archive
+        run: |
+          bash libraries/cutout/build.sh "$VERSION"
+      - name: Check the archive
+        run: |
+          set -euo pipefail
+          ARCHIVE="dist/cutout-$VERSION-darwin-arm64.tar.gz"
+          X="$(mktemp -d)"
+          tar -xzf "$ARCHIVE" -C "$X"
+          for f in inventory ui_elements photo_area text_mask cutout plate design_layer; do
+            test -s "$X/engine/$f.mjs" || { echo "missing engine/$f.mjs"; exit 1; }
+          done
+          field() { sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" libraries/cutout/library.json | head -1; }
+          check() { got="$(shasum -a 256 "$X/engine/$1" | cut -d' ' -f1)"; [ "$got" = "$(field "$2")" ] || { echo "engine/$1 is $got, library.json pins $(field "$2")"; exit 1; }; echo "engine/$1 $got"; }
+          check migan.onnx miganSha256
+          check ppocr_det.onnx ocrDetSha256
+          check ui_elements.onnx uiElementsSha256
+          check model.onnx modelSha256
+          check lama.onnx lamaSha256
+          [ "$("$X/bin/cutout" --version)" = "$VERSION" ] || { echo "the library does not answer $VERSION"; exit 1; }
+          ls -l "$ARCHIVE"
+          shasum -a 256 "$ARCHIVE"
+      - name: Attach it to the release
+        run: |
+          bash tools/attach-release.sh cutout "$VERSION" "dist/cutout-$VERSION-darwin-arm64.tar.gz"
+
+  lfm3-omni:
+    if: inputs.id == 'lfm3-omni'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build the archive from the pinned Hugging Face files (each checked by size and sha256)
+        run: |
+          node libraries/lfm3-omni/build.js "$VERSION" --out dist
+      - name: Check the archive
+        run: |
+          set -euo pipefail
+          ARCHIVE="dist/lfm3-omni-$VERSION-any.tar.gz"
+          tar -tzf "$ARCHIVE"
+          node -e 'for (const f of require("./libraries/lfm3-omni/library.json").upstream.files) if (f.sha256) console.log(f.name, f.sha256)' | while read -r NAME SHA; do
+            got="$(tar -xzOf "$ARCHIVE" "./$NAME" | sha256sum | cut -d' ' -f1)"
+            [ "$got" = "$SHA" ] || { echo "$NAME in the archive is $got, library.json pins $SHA"; exit 1; }
+            echo "$NAME $got"
+          done
+          ls -l "$ARCHIVE"
+          sha256sum "$ARCHIVE"
+      - name: Attach it to the release
+        run: |
+          bash tools/attach-release.sh lfm3-omni "$VERSION" "dist/lfm3-omni-$VERSION-any.tar.gz"

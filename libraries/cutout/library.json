@@ -24,8 +24,28 @@
     "miganModel": "MI-GAN 512 pipeline (Picsart AI Research, MIT code and MIT weights), ONNX from huggingface.co/andraniksargsyan/migan",
     "miganUrl": "https://huggingface.co/andraniksargsyan/migan/resolve/main/migan_pipeline_v2.onnx",
     "miganSha256": "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b",
-    "uiElementsModel": "RF-DETR medium fine-tuned on mobile UI designs (merve/rf-detr-mobile-ui, Apache-2.0), exported to ONNX by tools/export_ui_elements.py; not downloadable: build.sh takes it from dist/models",
+    "uiElementsModel": "RF-DETR medium fine-tuned on mobile UI designs (merve/rf-detr-mobile-ui, Apache-2.0), exported to ONNX by tools/export_ui_elements.py (tools/make_ui_elements.sh: pinned source, pinned environment, the same bytes wherever it runs); build.sh takes it from dist/models",
     "uiElementsFile": "dist/models/ui_elements.onnx",
-    "uiElementsSha256": "6d80d26e9d621946bc1c4c35932efbc42b98714a8e687d61fe92744c26605f4e"
+    "uiElementsSha256": "7d4683782f6bc14fa3a5a751c819e075283b9dece804ad6cad32ce557d2c911f",
+    "uiElementsSource": {
+      "repo": "merve/rf-detr-mobile-ui",
+      "revision": "8195d5994e83dbd38fbbdd337d1f2c96ad0b4bfd",
+      "files": [
+        {
+          "name": "model.safetensors",
+          "sha256": "66ede812de6359fc35412516aca96d00a570f215b6ebc225326e8c4868b46017"
+        },
+        {
+          "name": "config.json",
+          "sha256": "091333d2cfc28b8e093d3816cee1f8916431b15eb18fdc767d47abbcdd8bd824"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "sha256": "4e55a721a4ca13007d7ee4bbe914958060519f64da7c6e21b8e75732d46b8fb6"
+        }
+      ],
+      "python": "3.12.7",
+      "packages": "tools/export_requirements.txt"
+    }
   }
 }
