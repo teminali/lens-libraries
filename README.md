@@ -6,7 +6,7 @@ updates off for one.
 
 | Library | What it does |
 |---|---|
-| `cutout` | Takes pictures apart for a page copied from a screenshot: lifts a subject off its background, cleans a photo's design layer (plate), finds the images and the words the picture's edge cuts (inventory). |
+| `cutout` | Takes pictures apart for a page copied from a screenshot: lifts a subject off its background, cleans a photo's design layer (plate), finds where every word of a picture is (words, 1.2.0), finds the images and the words the picture's edge cuts (inventory). |
 | `fonts` | 49 open-licence (SIL OFL) type families from google/fonts as woff2, each with its licence. A family a page names is installed into that project, so it shows the real face offline. |
 | `llama` | Runs the voice model on this computer (llama.cpp's server, b11960). |
 | `lfm3-omni` | The voice model: hears, rewrites, answers and speaks for voice in Lens Code. LFM3-Omni-2B (Liquid AI). |

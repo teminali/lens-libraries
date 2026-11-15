@@ -44,7 +44,7 @@ jobs:
           ARCHIVE="dist/cutout-$VERSION-darwin-arm64.tar.gz"
           X="$(mktemp -d)"
           tar -xzf "$ARCHIVE" -C "$X"
-          for f in inventory ui_elements photo_area text_mask cutout plate design_layer; do
+          for f in inventory ui_elements photo_area text_mask cutout plate design_layer words; do
             test -s "$X/engine/$f.mjs" || { echo "missing engine/$f.mjs"; exit 1; }
           done
           field() { sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" libraries/cutout/library.json | head -1; }
